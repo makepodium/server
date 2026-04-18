@@ -1,0 +1,9 @@
+# package managers
+package.json
+pnpm-lock.yaml
+
+# build output
+/dist
+
+# generated migrations
+/drizzle

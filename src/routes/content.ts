@@ -1,0 +1,330 @@
+import { and, asc, desc, eq, inArray, SQL } from 'drizzle-orm';
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+
+import { requireOwnContent } from '@/auth/ownership.js';
+import { requireAuth, requireSelf } from '@/auth/plugin.js';
+import { db, schema } from '@/db/index.js';
+import { invalidateContentCache } from '@/lib/contentCache.js';
+import { notFound, unauthorized } from '@/lib/errors.js';
+import { newContentId } from '@/lib/ids.js';
+import { parse } from '@/lib/validate.js';
+import { serializeContent } from '@/shapes/content.js';
+import { storage } from '@/storage/index.js';
+
+const categoryIdSchema = z
+  .union([z.string().max(64), z.number(), z.null()])
+  .transform((value) => {
+    if (value === null) return null;
+    return typeof value === 'number' ? String(value) : value;
+  });
+
+const metadataSchema = z
+  .object({
+    duration: z
+      .number()
+      .finite()
+      .min(0)
+      .max(24 * 3600)
+      .optional(),
+    width: z.number().int().min(0).max(16384).optional(),
+    height: z.number().int().min(0).max(16384).optional(),
+    fps: z.number().finite().min(0).max(1000).optional(),
+    fileSize: z
+      .number()
+      .int()
+      .min(0)
+      .max(50 * 1024 ** 3)
+      .optional(),
+  })
+  .optional();
+
+const contentBodySchema = z.object({
+  contentTitle: z.string().max(200).optional(),
+  categoryId: categoryIdSchema.optional(),
+  privacy: z.number().int().min(0).max(10).optional(),
+  metadata: metadataSchema,
+});
+
+type ContentBody = z.infer<typeof contentBodySchema>;
+
+const csvInts = z
+  .string()
+  .optional()
+  .transform((raw) =>
+    !raw
+      ? []
+      : raw
+          .split(',')
+          .map((part) => Number.parseInt(part.trim(), 10))
+          .filter((value) => Number.isFinite(value)),
+  );
+
+const csvStrings = z
+  .string()
+  .optional()
+  .transform((raw) =>
+    !raw
+      ? []
+      : raw
+          .split(',')
+          .map((part) => part.trim())
+          .filter((value) => value.length > 0),
+  );
+
+const paginationLimit = z.coerce.number().int().min(1).max(100).optional();
+const paginationOffset = z.coerce.number().int().min(0).optional();
+
+const listQuerySchema = z.object({
+  limit: paginationLimit,
+  offset: paginationOffset,
+  privacy: csvInts,
+  sortBy: z.string().max(50).optional(),
+  sortDirection: z.enum(['ASC', 'DESC']).optional(),
+  newPagination: z.enum(['true', 'false']).optional(),
+});
+
+const userContentQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(10000).optional(),
+  offset: paginationOffset,
+  privacy: csvInts,
+});
+
+const bulkQuerySchema = z.object({
+  contentIds: csvStrings,
+});
+
+const loadUserForContent = async (userId: number) => {
+  const user = await db.query.users.findFirst({
+    where: eq(schema.users.userId, userId),
+  });
+  if (!user) throw notFound();
+
+  return {
+    userId: user.userId,
+    userName: user.userName,
+    avatarKey: user.avatarKey,
+  };
+};
+
+const buildContentPatch = (
+  body: ContentBody,
+): Partial<typeof schema.content.$inferInsert> => {
+  const patch: Partial<typeof schema.content.$inferInsert> = {};
+
+  if (body.contentTitle !== undefined) patch.contentTitle = body.contentTitle;
+  if (body.categoryId !== undefined) patch.categoryId = body.categoryId;
+  if (body.privacy !== undefined) patch.privacy = body.privacy;
+
+  const metadata = body.metadata;
+  if (!metadata) return patch;
+
+  if (metadata.duration !== undefined) patch.duration = metadata.duration;
+  if (metadata.width !== undefined) patch.width = metadata.width;
+  if (metadata.height !== undefined) patch.height = metadata.height;
+  if (metadata.fps !== undefined) patch.fps = metadata.fps;
+  if (metadata.fileSize !== undefined) patch.fileSize = metadata.fileSize;
+
+  return patch;
+};
+
+export const contentRoutes = async (fastify: FastifyInstance) => {
+  fastify.post(
+    '/users/:userId/content',
+    { preHandler: requireSelf('userId') },
+    async (request) => {
+      if (!request.user) throw unauthorized();
+
+      const body = parse(contentBodySchema, request.body ?? {});
+      const metadata = body.metadata ?? {};
+
+      const [row] = await db
+        .insert(schema.content)
+        .values({
+          contentId: newContentId(),
+          userId: request.user.userId,
+          contentTitle: body.contentTitle ?? '',
+          categoryId: body.categoryId ?? null,
+          privacy: body.privacy ?? 3,
+          duration: metadata.duration ?? null,
+          width: metadata.width ?? null,
+          height: metadata.height ?? null,
+          fps: metadata.fps ?? null,
+          fileSize: metadata.fileSize ?? null,
+        })
+        .returning();
+
+      const user = await loadUserForContent(request.user.userId);
+
+      return serializeContent(row!, user);
+    },
+  );
+
+  fastify.get(
+    '/users/:userId/content',
+    { preHandler: requireAuth },
+    async (request) => {
+      if (!request.user) throw unauthorized();
+
+      const { userId } = request.params as { userId: string };
+      const targetId =
+        userId === '@me' ? request.user.userId : Number.parseInt(userId, 10);
+      if (!Number.isFinite(targetId)) return { content: [] };
+
+      const query = parse(userContentQuerySchema, request.query ?? {});
+      const limit = query.limit ?? 100;
+      const offset = query.offset ?? 0;
+      const privacyFilter = query.privacy;
+
+      const filters: SQL[] = [eq(schema.content.userId, targetId)];
+      if (privacyFilter.length > 0)
+        filters.push(inArray(schema.content.privacy, privacyFilter));
+
+      const rows = await db.query.content.findMany({
+        where: and(...filters),
+        orderBy: desc(schema.content.createdAt),
+        limit,
+        offset,
+        columns: { contentId: true, createdAt: true },
+      });
+
+      const content = rows.map((row) => [
+        row.contentId,
+        row.createdAt.getTime(),
+      ]);
+
+      return { content };
+    },
+  );
+
+  fastify.get('/content/bulk', { preHandler: requireAuth }, async (request) => {
+    if (!request.user) throw unauthorized();
+
+    const query = parse(bulkQuerySchema, request.query ?? {});
+    const ids = query.contentIds;
+    if (ids.length === 0) return { items: [] };
+
+    const rows = await db.query.content.findMany({
+      where: and(
+        inArray(schema.content.contentId, ids),
+        eq(schema.content.userId, request.user.userId),
+      ),
+    });
+
+    const user = await loadUserForContent(request.user.userId);
+    const items = await Promise.all(
+      rows.map((row) => serializeContent(row, user)),
+    );
+
+    return { items };
+  });
+
+  fastify.get('/content', { preHandler: requireAuth }, async (request) => {
+    if (!request.user) throw unauthorized();
+
+    const query = parse(listQuerySchema, request.query ?? {});
+    const limit = query.limit ?? 20;
+    const offset = query.offset ?? 0;
+    const privacyFilter = query.privacy;
+    const paginated = query.newPagination === 'true';
+
+    if (paginated) return { items: [], meta: null };
+
+    const filters: SQL[] = [eq(schema.content.userId, request.user.userId)];
+    if (privacyFilter.length > 0)
+      filters.push(inArray(schema.content.privacy, privacyFilter));
+
+    const order =
+      query.sortDirection === 'ASC'
+        ? asc(schema.content.createdAt)
+        : desc(schema.content.createdAt);
+
+    const rows = await db.query.content.findMany({
+      where: and(...filters),
+      orderBy: order,
+      limit,
+      offset,
+    });
+
+    const user = await loadUserForContent(request.user.userId);
+
+    return Promise.all(rows.map((row) => serializeContent(row, user)));
+  });
+
+  fastify.get(
+    '/content/:contentId',
+    { preHandler: [requireAuth, requireOwnContent('param')] },
+    async (request) => {
+      if (!request.user) throw unauthorized();
+
+      const { contentId } = request.params as { contentId: string };
+
+      const row = await db.query.content.findFirst({
+        where: eq(schema.content.contentId, contentId),
+      });
+      if (!row) throw notFound();
+
+      const user = await loadUserForContent(row.userId);
+
+      return serializeContent(row, user);
+    },
+  );
+
+  fastify.post(
+    '/content/:contentId',
+    { preHandler: [requireAuth, requireOwnContent('param')] },
+    async (request) => {
+      if (!request.user) throw unauthorized();
+
+      const { contentId } = request.params as { contentId: string };
+      const body = parse(contentBodySchema, request.body ?? {});
+      const patch = buildContentPatch(body);
+
+      const row =
+        Object.keys(patch).length === 0
+          ? await db.query.content.findFirst({
+              where: eq(schema.content.contentId, contentId),
+            })
+          : (
+              await db
+                .update(schema.content)
+                .set(patch)
+                .where(eq(schema.content.contentId, contentId))
+                .returning()
+            )[0];
+      if (!row) throw notFound();
+
+      if (Object.keys(patch).length > 0) invalidateContentCache(contentId);
+
+      const user = await loadUserForContent(row.userId);
+
+      return serializeContent(row, user);
+    },
+  );
+
+  fastify.delete(
+    '/content/:contentId',
+    { preHandler: [requireAuth, requireOwnContent('param')] },
+    async (request) => {
+      const { contentId } = request.params as { contentId: string };
+
+      const row = await db.query.content.findFirst({
+        where: eq(schema.content.contentId, contentId),
+      });
+      if (!row) throw notFound();
+
+      await Promise.allSettled([
+        row.videoKey ? storage.delete(row.videoKey) : Promise.resolve(),
+        row.thumbKey ? storage.delete(row.thumbKey) : Promise.resolve(),
+      ]);
+
+      await db
+        .delete(schema.content)
+        .where(eq(schema.content.contentId, contentId));
+
+      invalidateContentCache(contentId);
+
+      return { deleted: true };
+    },
+  );
+};

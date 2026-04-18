@@ -1,0 +1,1 @@
+ALTER TABLE "content" ALTER COLUMN "category_id" SET DATA TYPE text;
