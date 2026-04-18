@@ -36,6 +36,22 @@ export const users = pgTable(
   }),
 );
 
+export const categories = pgTable(
+  'categories',
+  {
+    categoryId: text('category_id').primaryKey(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    icon: text('icon'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    slugUnique: uniqueIndex('categories_slug_unique').on(table.slug),
+  }),
+);
+
 export const content = pgTable(
   'content',
   {
@@ -110,3 +126,4 @@ export const uploadTasksRelations = relations(uploadTasks, ({ one }) => ({
 
 export type User = typeof users.$inferSelect;
 export type Content = typeof content.$inferSelect;
+export type Category = typeof categories.$inferSelect;

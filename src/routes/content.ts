@@ -8,7 +8,9 @@ import { db, schema } from '@/db/index.js';
 import { invalidateContentCache } from '@/lib/contentCache.js';
 import { notFound, unauthorized } from '@/lib/errors.js';
 import { newContentId } from '@/lib/ids.js';
+import { slugify } from '@/lib/slugify.js';
 import { parse } from '@/lib/validate.js';
+import type { CategoryStub } from '@/shapes/content.js';
 import { serializeContent } from '@/shapes/content.js';
 
 const categoryIdSchema = z
@@ -41,6 +43,9 @@ const metadataSchema = z
 const contentBodySchema = z.object({
   contentTitle: z.string().max(200).optional(),
   categoryId: categoryIdSchema.optional(),
+  categoryName: z.string().max(120).optional(),
+  categorySlug: z.string().max(80).optional(),
+  categoryIcon: z.string().max(500).optional(),
   privacy: z.number().int().min(0).max(10).optional(),
   metadata: metadataSchema,
 });
@@ -108,6 +113,95 @@ const loadUserForContent = async (userId: number) => {
   };
 };
 
+const loadCategory = async (
+  categoryId: string | null | undefined,
+): Promise<CategoryStub | null> => {
+  if (!categoryId) return null;
+
+  const row = await db.query.categories.findFirst({
+    where: eq(schema.categories.categoryId, categoryId),
+  });
+  if (!row) return null;
+
+  return {
+    categoryId: row.categoryId,
+    name: row.name,
+    slug: row.slug,
+    icon: row.icon,
+  };
+};
+
+const ensureUniqueSlug = async (
+  desired: string,
+  categoryId: string,
+): Promise<string> => {
+  let slug = desired;
+  let suffix = 1;
+
+  while (true) {
+    const existing = await db.query.categories.findFirst({
+      where: eq(schema.categories.slug, slug),
+      columns: { categoryId: true },
+    });
+    if (!existing || existing.categoryId === categoryId) return slug;
+
+    suffix += 1;
+    slug = `${desired}-${suffix}`;
+  }
+};
+
+const upsertCategory = async (
+  categoryId: string | null,
+  body: ContentBody,
+): Promise<CategoryStub | null> => {
+  if (!categoryId) return null;
+
+  const existing = await db.query.categories.findFirst({
+    where: eq(schema.categories.categoryId, categoryId),
+  });
+
+  const incomingName = body.categoryName?.trim();
+  const incomingSlugRaw = body.categorySlug?.trim();
+  const incomingIcon = body.categoryIcon?.trim();
+
+  if (existing) {
+    const patch: Partial<typeof schema.categories.$inferInsert> = {};
+    if (incomingName && incomingName !== existing.name)
+      patch.name = incomingName;
+    if (incomingIcon && incomingIcon !== existing.icon)
+      patch.icon = incomingIcon;
+
+    if (Object.keys(patch).length > 0) {
+      await db
+        .update(schema.categories)
+        .set(patch)
+        .where(eq(schema.categories.categoryId, categoryId));
+    }
+
+    return {
+      categoryId: existing.categoryId,
+      name: patch.name ?? existing.name,
+      slug: existing.slug,
+      icon: patch.icon ?? existing.icon,
+    };
+  }
+
+  const nameForSlug = incomingSlugRaw || incomingName || `game-${categoryId}`;
+  const desiredSlug = slugify(nameForSlug);
+  const slug = await ensureUniqueSlug(desiredSlug, categoryId);
+  const name = incomingName || categoryId;
+  const icon = incomingIcon ?? null;
+
+  await db.insert(schema.categories).values({
+    categoryId,
+    name,
+    slug,
+    icon,
+  });
+
+  return { categoryId, name, slug, icon };
+};
+
 const buildContentPatch = (
   body: ContentBody,
 ): Partial<typeof schema.content.$inferInsert> => {
@@ -139,13 +233,16 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
       const body = parse(contentBodySchema, request.body ?? {});
       const metadata = body.metadata ?? {};
 
+      const categoryId = body.categoryId ?? null;
+      const category = await upsertCategory(categoryId, body);
+
       const [row] = await db
         .insert(schema.content)
         .values({
           contentId: newContentId(),
           userId: request.user.userId,
           contentTitle: body.contentTitle ?? '',
-          categoryId: body.categoryId ?? null,
+          categoryId,
           privacy: body.privacy ?? 3,
           duration: metadata.duration ?? null,
           width: metadata.width ?? null,
@@ -157,7 +254,7 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
 
       const user = await loadUserForContent(request.user.userId);
 
-      return serializeContent(row!, user);
+      return serializeContent(row!, user, category);
     },
   );
 
@@ -225,13 +322,29 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
       return loaded;
     };
 
+    const categoryCache = new Map<string, CategoryStub | null>();
+    const getCategory = async (categoryId: string | null) => {
+      if (!categoryId) return null;
+      if (categoryCache.has(categoryId)) return categoryCache.get(categoryId)!;
+
+      const loaded = await loadCategory(categoryId);
+      categoryCache.set(categoryId, loaded);
+      return loaded;
+    };
+
     const byId = new Map(rows.map((row) => [row.contentId, row]));
     const tombstone = new Date().toISOString();
 
     const items = await Promise.all(
       ids.map(async (id) => {
         const row = byId.get(id);
-        if (row) return serializeContent(row, await getUser(row.userId));
+        if (row) {
+          const [user, category] = await Promise.all([
+            getUser(row.userId),
+            getCategory(row.categoryId),
+          ]);
+          return serializeContent(row, user, category);
+        }
 
         return { contentId: id, deletedAt: tombstone };
       }),
@@ -295,8 +408,24 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
       return loaded;
     };
 
+    const categoryCache = new Map<string, CategoryStub | null>();
+    const getCategory = async (categoryId: string | null) => {
+      if (!categoryId) return null;
+      if (categoryCache.has(categoryId)) return categoryCache.get(categoryId)!;
+
+      const loaded = await loadCategory(categoryId);
+      categoryCache.set(categoryId, loaded);
+      return loaded;
+    };
+
     return Promise.all(
-      rows.map(async (row) => serializeContent(row, await getUser(row.userId))),
+      rows.map(async (row) => {
+        const [user, category] = await Promise.all([
+          getUser(row.userId),
+          getCategory(row.categoryId),
+        ]);
+        return serializeContent(row, user, category);
+      }),
     );
   });
 
@@ -313,9 +442,12 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
       });
       if (!row || row.deletedAt) throw notFound();
 
-      const user = await loadUserForContent(row.userId);
+      const [user, category] = await Promise.all([
+        loadUserForContent(row.userId),
+        loadCategory(row.categoryId),
+      ]);
 
-      return serializeContent(row, user);
+      return serializeContent(row, user, category);
     },
   );
 
@@ -328,6 +460,10 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
       const { contentId } = request.params as { contentId: string };
       const body = parse(contentBodySchema, request.body ?? {});
       const patch = buildContentPatch(body);
+
+      if (body.categoryId !== undefined && body.categoryId !== null) {
+        await upsertCategory(body.categoryId, body);
+      }
 
       const row =
         Object.keys(patch).length === 0
@@ -350,9 +486,12 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
 
       if (Object.keys(patch).length > 0) invalidateContentCache(contentId);
 
-      const user = await loadUserForContent(row.userId);
+      const [user, category] = await Promise.all([
+        loadUserForContent(row.userId),
+        loadCategory(row.categoryId),
+      ]);
 
-      return serializeContent(row, user);
+      return serializeContent(row, user, category);
     },
   );
 

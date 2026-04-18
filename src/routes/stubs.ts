@@ -122,9 +122,6 @@ const stubs: StubDef[] = [
     body: { zipcode: '00000', country: 'US', locale: 'en-US', region: '' },
   },
 
-  { method: 'GET', path: '/categories', body: [] },
-  { method: 'GET', path: '/categories/:id', body: {} },
-
   { method: 'POST', path: '/views', body: null, statusCode: 204 },
   {
     method: 'POST',

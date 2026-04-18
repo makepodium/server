@@ -1,10 +1,17 @@
-import type { Content, User } from '@/db/schema.js';
+import type { Category, Content, User } from '@/db/schema.js';
 import { env } from '@/env.js';
 import { getCachedSignedUrl } from '@/lib/presignCache.js';
+import { slugFallback } from '@/lib/slugify.js';
+
+export type CategoryStub = Pick<
+  Category,
+  'categoryId' | 'name' | 'slug' | 'icon'
+>;
 
 export const serializeContent = async (
   row: Content,
   user: Pick<User, 'userId' | 'userName' | 'avatarKey'>,
+  category?: CategoryStub | null,
 ) => {
   const [videoUrl, thumbUrl, avatarUrl] = await Promise.all([
     row.videoKey ? getCachedSignedUrl(row.videoKey) : null,
@@ -14,11 +21,27 @@ export const serializeContent = async (
 
   const video = videoUrl ?? '';
 
+  const categoryId = row.categoryId;
+  const resolvedCategory =
+    category && category.categoryId === categoryId ? category : null;
+
+  const slug =
+    resolvedCategory?.slug ?? (categoryId ? slugFallback(categoryId) : 'game');
+
+  const categoryBlock = categoryId
+    ? {
+        categoryId,
+        categoryName: resolvedCategory?.name ?? null,
+        icon: resolvedCategory?.icon ?? null,
+      }
+    : null;
+
   return {
     contentId: row.contentId,
     contentTitle: row.contentTitle,
-    categoryId: row.categoryId,
-    categoryName: null,
+    categoryId,
+    categoryName: resolvedCategory?.name ?? null,
+    category: categoryBlock,
 
     contentUrl: video,
     contentUrl144p: video,
@@ -26,7 +49,7 @@ export const serializeContent = async (
     contentUrl720p: video,
     contentUrl1080p: video,
     contentThumbnail: thumbUrl ?? '',
-    contentShareUrl: `${env.PUBLIC_APP_URL.replace(/\/$/, '')}/games/${row.categoryId ?? 'game'}/clips/${row.contentId}`,
+    contentShareUrl: `${env.PUBLIC_APP_URL.replace(/\/$/, '')}/games/${slug}/clips/${row.contentId}`,
 
     userId: user.userId,
     userName: user.userName,

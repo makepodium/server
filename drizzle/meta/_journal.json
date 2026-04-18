@@ -50,6 +50,13 @@
       "when": 1776540341452,
       "tag": "0006_stale_george_stacy",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776542690385,
+      "tag": "0007_round_wonder_man",
+      "breakpoints": true
     }
   ]
 }

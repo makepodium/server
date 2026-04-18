@@ -1,4 +1,4 @@
-import { and, eq, ilike, isNull } from 'drizzle-orm';
+import { and, eq, ilike, inArray, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -6,7 +6,7 @@ import { requireAuth } from '@/auth/plugin.js';
 import { db, schema } from '@/db/index.js';
 import { unauthorized } from '@/lib/errors.js';
 import { parse } from '@/lib/validate.js';
-import { serializeContent } from '@/shapes/content.js';
+import { type CategoryStub, serializeContent } from '@/shapes/content.js';
 
 const searchQuerySchema = z.object({
   q: z.string().max(200).optional(),
@@ -55,8 +55,35 @@ export const searchRoutes = async (fastify: FastifyInstance) => {
       userName: userRow.userName,
       avatarKey: userRow.avatarKey,
     };
+
+    const categoryIds = [
+      ...new Set(
+        rows.map((row) => row.categoryId).filter((id): id is string => !!id),
+      ),
+    ];
+    const categoryMap = new Map<string, CategoryStub>();
+    if (categoryIds.length > 0) {
+      const categoryRows = await db.query.categories.findMany({
+        where: inArray(schema.categories.categoryId, categoryIds),
+      });
+      for (const cat of categoryRows) {
+        categoryMap.set(cat.categoryId, {
+          categoryId: cat.categoryId,
+          name: cat.name,
+          slug: cat.slug,
+          icon: cat.icon,
+        });
+      }
+    }
+
     const items = await Promise.all(
-      rows.map((row) => serializeContent(row, user)),
+      rows.map((row) =>
+        serializeContent(
+          row,
+          user,
+          row.categoryId ? (categoryMap.get(row.categoryId) ?? null) : null,
+        ),
+      ),
     );
 
     return { items };

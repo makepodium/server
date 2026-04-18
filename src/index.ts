@@ -4,8 +4,10 @@ import Fastify, { type FastifyInstance } from 'fastify';
 
 import { authPlugin } from '@/auth/plugin.js';
 import { env } from '@/env.js';
+import { startCategorySync } from '@/lib/categorySync.js';
 import { MedalError } from '@/lib/errors.js';
 import { authRoutes } from '@/routes/auth.js';
+import { categoryRoutes } from '@/routes/categories.js';
 import { contentRoutes } from '@/routes/content.js';
 import { publicRoutes } from '@/routes/public.js';
 import { searchRoutes } from '@/routes/search.js';
@@ -18,6 +20,7 @@ const apiRoutes = async (app: FastifyInstance) => {
   await app.register(authRoutes);
   await app.register(userRoutes);
   await app.register(contentRoutes);
+  await app.register(categoryRoutes);
   await app.register(uploadRoutes);
   await app.register(taskRoutes);
   await app.register(searchRoutes);
@@ -89,6 +92,7 @@ const main = async () => {
 
   try {
     await app.listen({ host: env.HOST, port: env.PORT });
+    startCategorySync(app.log);
   } catch (err) {
     app.log.error(err);
     process.exit(1);
