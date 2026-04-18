@@ -78,6 +78,31 @@ const userNameCheckSchema = z
     message: 'userName required',
   });
 
+const computePasswordEntropy = (
+  password: string,
+  relatedWords: string[],
+): number => {
+  if (!password) return 0;
+
+  let poolSize = 0;
+  if (/[a-z]/.test(password)) poolSize += 26;
+  if (/[A-Z]/.test(password)) poolSize += 26;
+  if (/\d/.test(password)) poolSize += 10;
+  if (/[^a-zA-Z\d]/.test(password)) poolSize += 32;
+
+  const uniqueRatio = new Set(password).size / password.length;
+  let entropy =
+    Math.log2(poolSize || 1) * password.length * Math.sqrt(uniqueRatio);
+
+  const lower = password.toLowerCase();
+  const hasRelated = relatedWords.some(
+    (word) => word.length > 2 && lower.includes(word.toLowerCase()),
+  );
+  if (hasRelated) entropy *= 0.5;
+
+  return entropy;
+};
+
 const loginRateLimit = { max: 15, timeWindow: '1 minute' };
 const registerRateLimit = { max: 10, timeWindow: '1 minute' };
 const enumerationRateLimit = { max: 30, timeWindow: '1 minute' };
@@ -171,9 +196,23 @@ export const authRoutes = async (fastify: FastifyInstance) => {
     },
   );
 
-  fastify.post('/authentication/password', async () => ({
-    valid: true,
-    score: 4,
-    feedback: { warning: '', suggestions: [] },
-  }));
+  fastify.post('/authentication/password', async (request) => {
+    const body = request.body as { password?: unknown; relatedWords?: unknown };
+    const password = typeof body?.password === 'string' ? body.password : '';
+    const relatedWords = Array.isArray(body?.relatedWords)
+      ? (body.relatedWords as unknown[]).filter(
+          (w): w is string => typeof w === 'string',
+        )
+      : [];
+
+    const entropy = computePasswordEntropy(password, relatedWords);
+    const score = Math.min(4, Math.floor(entropy / 15)) as 0 | 1 | 2 | 3 | 4;
+
+    return {
+      valid: true,
+      entropy,
+      score,
+      feedback: { warning: '', suggestions: [] },
+    };
+  });
 };

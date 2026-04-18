@@ -44,6 +44,7 @@ const parseHeader = (header: unknown): ParsedHeader | null => {
 
 const cache = new Map<string, CachedUser>();
 const CACHE_TTL_MS = 10_000;
+const CACHE_MAX = 10_000;
 
 const resolveUser = async (
   userId: number,
@@ -69,7 +70,14 @@ const resolveUser = async (
     authKey: row.authKey,
     at: Date.now(),
   };
-  cache.set(key, entry);
+
+  if (cache.size >= CACHE_MAX) {
+    const now = Date.now();
+    for (const [k, v] of cache) {
+      if (now - v.at >= CACHE_TTL_MS) cache.delete(k);
+    }
+  }
+  if (cache.size < CACHE_MAX) cache.set(key, entry);
 
   return entry;
 };
