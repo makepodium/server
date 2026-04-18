@@ -13,7 +13,7 @@ if (!existsSync(distDir)) {
   process.exit(1);
 }
 
-const EXTENSIONS = new Set(['.html']);
+const EXTENSIONS = new Set(['.html', '.ico']);
 
 cpSync(srcDir, distDir, {
   recursive: true,

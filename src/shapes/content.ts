@@ -43,17 +43,16 @@ export const serializeContent = async (
     userName: user.userName,
     displayName: user.displayName,
     thumbnail: avatar,
-    followers: 0,
-    following: 0,
-    isFollowing: false,
-    isFollowedBy: false,
-    isBlocked: false,
-    isVerified: false,
   };
+
+  const uploadedAtIso = row.uploadedAt?.toISOString() ?? null;
+  const createdAtIso = row.createdAt.toISOString();
+  const durationSeconds = row.duration ?? 0;
 
   return {
     contentId: row.contentId,
     contentTitle: row.contentTitle,
+
     categoryId,
     categoryName: resolvedCategory?.name ?? null,
     category: categoryBlock,
@@ -73,23 +72,24 @@ export const serializeContent = async (
     thumbnail480p: thumb,
     thumbnail720p: thumb,
     thumbnail1080p: thumb,
-    contentThumbnail: thumb,
 
     contentShareUrl: `${env.PUBLIC_APP_URL.replace(/\/$/, '')}/games/${slug}/clips/${row.contentId}`,
 
     poster,
-    userId: user.userId,
-    userName: user.userName,
-    userAvatar: avatar,
 
     likes: 0,
     comments: 0,
     views: row.views,
+    viewers: [] as unknown[],
 
-    duration: row.duration ?? 0,
+    videoLengthSeconds: durationSeconds,
+
     privacy: row.privacy,
-    createdAt: row.createdAt.toISOString(),
-    contentUploadedAt: row.uploadedAt?.toISOString() ?? null,
+    userSaved: false,
+
+    created: createdAtIso,
+    contentUploadedAt: uploadedAtIso,
+    publishedAt: uploadedAtIso,
     deletedAt: row.deletedAt?.toISOString() ?? null,
 
     tags: [] as string[],
@@ -97,5 +97,6 @@ export const serializeContent = async (
     playerTags: [] as unknown[],
     layers: [] as unknown[],
     music: [] as unknown[],
+    contentCollections: [] as unknown[],
   };
 };

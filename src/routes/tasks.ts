@@ -4,9 +4,13 @@ import type { FastifyInstance } from 'fastify';
 import { requireOwnTask } from '@/auth/ownership.js';
 import { requireAuth } from '@/auth/plugin.js';
 import { db, schema } from '@/db/index.js';
-import { primeContentCache } from '@/lib/contentCache.js';
+import {
+  invalidateContentCache,
+  primeContentCache,
+} from '@/lib/contentCache.js';
 import { badRequest, notFound, unauthorized } from '@/lib/errors.js';
 import { primeCachedSignedUrl } from '@/lib/presignCache.js';
+import { probeVideo } from '@/media/probe.js';
 import { generateThumbnail } from '@/media/thumbnail.js';
 import { keys, storage } from '@/storage/index.js';
 
@@ -44,6 +48,22 @@ export const taskRoutes = async (fastify: FastifyInstance) => {
 
         const contentIdForPrime = task.contentId;
         const videoKey = task.objectKey;
+
+        probeVideo(videoKey)
+          .then(async ({ durationSeconds }) => {
+            if (durationSeconds === null) return;
+            await db
+              .update(schema.content)
+              .set({ duration: durationSeconds })
+              .where(eq(schema.content.contentId, contentIdForPrime));
+            invalidateContentCache(contentIdForPrime);
+          })
+          .catch((error) =>
+            fastify.log.warn(
+              { error, contentId: contentIdForPrime },
+              'duration probe failed',
+            ),
+          );
 
         storage
           .presignedGet(videoKey)

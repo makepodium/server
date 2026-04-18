@@ -2,6 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 
 import { db, schema } from '@/db/index.js';
 import type { Content } from '@/db/schema.js';
+import { probeVideo } from '@/media/probe.js';
 import { storage } from '@/storage/index.js';
 
 import { invalidateContentCache } from './contentCache.js';
@@ -35,9 +36,18 @@ export const reconcileContentUpload = async <T extends Content>(
   }
 
   const uploadedAt = new Date();
+
+  const needsDuration = row.duration === null || row.duration === undefined;
+  const probed = needsDuration
+    ? await probeVideo(row.videoKey).catch(() => ({ durationSeconds: null }))
+    : { durationSeconds: null };
+
+  const durationUpdate =
+    probed.durationSeconds !== null ? { duration: probed.durationSeconds } : {};
+
   const [updated] = await db
     .update(schema.content)
-    .set({ uploadState: 'uploaded', uploadedAt })
+    .set({ uploadState: 'uploaded', uploadedAt, ...durationUpdate })
     .where(
       and(
         eq(schema.content.contentId, row.contentId),
@@ -52,5 +62,6 @@ export const reconcileContentUpload = async <T extends Content>(
     ...row,
     uploadState: updated?.uploadState ?? 'uploaded',
     uploadedAt,
+    duration: updated?.duration ?? row.duration,
   };
 };

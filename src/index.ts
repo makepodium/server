@@ -6,6 +6,7 @@ import { authPlugin } from '@/auth/plugin.js';
 import { env } from '@/env.js';
 import { startCategorySync } from '@/lib/categorySync.js';
 import { MedalError } from '@/lib/errors.js';
+import { FAVICON_BYTES, FAVICON_CACHE_CONTROL } from '@/lib/favicon.js';
 import { authRoutes } from '@/routes/auth.js';
 import { categoryRoutes } from '@/routes/categories.js';
 import { contentRoutes } from '@/routes/content.js';
@@ -79,6 +80,13 @@ const build = async () => {
     return { ok: true };
   });
   app.get('/health', async () => ({ ok: true }));
+
+  app.get('/favicon.ico', async (_request, reply) =>
+    reply
+      .type('image/x-icon')
+      .header('cache-control', FAVICON_CACHE_CONTROL)
+      .send(FAVICON_BYTES),
+  );
 
   await app.register(apiRoutes, { prefix: '/api' });
   await app.register(publicRoutes);
