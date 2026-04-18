@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { db, schema } from '@/db/index.js';
-import { getCachedContent, setCachedContent } from '@/lib/contentCache.js';
+import { resolveContent } from '@/lib/contentCache.js';
 import { notFound } from '@/lib/errors.js';
 import { storage } from '@/storage/index.js';
 
@@ -17,36 +17,30 @@ const resolveShare = async (
 ) => {
   if (!contentId || !CONTENT_ID_PATTERN.test(contentId)) throw notFound();
 
-  const cached = getCachedContent(contentId);
+  const resolved = await resolveContent(contentId, async () => {
+    const row = await db.query.content.findFirst({
+      where: eq(schema.content.contentId, contentId),
+    });
 
-  if (cached) {
-    if (cached.videoKey === null) throw notFound();
-    const signedUrl = await storage.presignedGet(cached.videoKey);
-    return reply.redirect(signedUrl, 302);
-  }
+    if (!row || !row.videoKey) {
+      if (!row) {
+        request.log.warn({ contentId }, 'share link: content row not found');
+      } else {
+        request.log.warn(
+          { contentId, privacy: row.privacy },
+          'share link: no videoKey yet (upload incomplete?)',
+        );
+      }
+      return { videoKey: null, signedUrl: null };
+    }
 
-  const row = await db.query.content.findFirst({
-    where: eq(schema.content.contentId, contentId),
+    const signedUrl = await storage.presignedGet(row.videoKey);
+    return { videoKey: row.videoKey, signedUrl };
   });
 
-  if (!row || !row.videoKey) {
-    setCachedContent(contentId, null);
-    if (!row) {
-      request.log.warn({ contentId }, 'share link: content row not found');
-    } else {
-      request.log.warn(
-        { contentId, privacy: row.privacy },
-        'share link: no videoKey yet (upload incomplete?)',
-      );
-    }
-    throw notFound();
-  }
+  if (!resolved.videoKey || !resolved.signedUrl) throw notFound();
 
-  setCachedContent(contentId, row.videoKey);
-
-  const signedUrl = await storage.presignedGet(row.videoKey);
-
-  return reply.redirect(signedUrl, 302);
+  return reply.redirect(resolved.signedUrl, 302);
 };
 
 export const publicRoutes = async (fastify: FastifyInstance) => {
