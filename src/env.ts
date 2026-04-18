@@ -30,7 +30,15 @@ export const env = createEnv({
 
     PRESIGNED_TTL_SECONDS: z.coerce.number().int().positive().default(300),
 
-    PUBLIC_APP_URL: z.string().url().default('http://localhost:8080'),
+    PUBLIC_APP_URL: z.preprocess(
+      (val) => {
+        if (val !== undefined && val !== '') return val;
+        const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
+        if (domain) return `http://${domain}`;
+        return 'http://localhost:8080';
+      },
+      z.string().url(),
+    ),
 
     ROOT_REDIRECT_URL: z.string().url().optional(),
 

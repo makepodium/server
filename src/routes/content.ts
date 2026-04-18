@@ -7,7 +7,7 @@ import { requireOwnContent } from '@/auth/ownership.js';
 import { requireAuth, requireSelf } from '@/auth/plugin.js';
 import { db, schema } from '@/db/index.js';
 import { invalidateContentCache } from '@/lib/contentCache.js';
-import { notFound, unauthorized } from '@/lib/errors.js';
+import { forbidden, notFound, unauthorized } from '@/lib/errors.js';
 import { newContentId } from '@/lib/ids.js';
 import { slugify } from '@/lib/slugify.js';
 import { reconcileContentUpload } from '@/lib/uploadReconcile.js';
@@ -492,14 +492,18 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
 
   fastify.delete(
     '/content/:contentId',
-    { preHandler: [requireAuth, requireOwnContent('param')] },
+    { preHandler: requireAuth },
     async (request) => {
+      if (!request.user) throw unauthorized();
+
       const { contentId } = request.params as { contentId: string };
 
       const row = await db.query.content.findFirst({
         where: eq(schema.content.contentId, contentId),
       });
-      if (!row || row.deletedAt) throw notFound();
+
+      if (!row || row.deletedAt) return { deleted: true };
+      if (row.userId !== request.user.userId) throw forbidden();
 
       await db
         .update(schema.content)
