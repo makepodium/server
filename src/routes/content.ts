@@ -207,15 +207,28 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
     if (ids.length === 0) return { items: [] };
 
     const rows = await db.query.content.findMany({
-      where: and(
-        inArray(schema.content.contentId, ids),
-        eq(schema.content.userId, request.user.userId),
-      ),
+      where: inArray(schema.content.contentId, ids),
     });
 
-    const user = await loadUserForContent(request.user.userId);
+    const userCache = new Map<
+      number,
+      Awaited<ReturnType<typeof loadUserForContent>>
+    >();
+    const getUser = async (userId: number) => {
+      const cached = userCache.get(userId);
+      if (cached) return cached;
+
+      const loaded = await loadUserForContent(userId);
+      userCache.set(userId, loaded);
+      return loaded;
+    };
+
+    const byId = new Map(rows.map((row) => [row.contentId, row]));
     const items = await Promise.all(
-      rows.map((row) => serializeContent(row, user)),
+      ids
+        .map((id) => byId.get(id))
+        .filter((row): row is NonNullable<typeof row> => row !== undefined)
+        .map(async (row) => serializeContent(row, await getUser(row.userId))),
     );
 
     return { items };
