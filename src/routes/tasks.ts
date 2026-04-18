@@ -6,6 +6,7 @@ import { requireAuth } from '@/auth/plugin.js';
 import { db, schema } from '@/db/index.js';
 import { primeContentCache } from '@/lib/contentCache.js';
 import { badRequest, notFound, unauthorized } from '@/lib/errors.js';
+import { primeCachedSignedUrl } from '@/lib/presignCache.js';
 import { generateThumbnail } from '@/media/thumbnail.js';
 import { keys, storage } from '@/storage/index.js';
 
@@ -42,10 +43,13 @@ export const taskRoutes = async (fastify: FastifyInstance) => {
           .where(eq(schema.content.contentId, task.contentId));
 
         const contentIdForPrime = task.contentId;
+        const videoKey = task.objectKey;
+
         storage
-          .presignedGet(task.objectKey)
+          .presignedGet(videoKey)
           .then((signedUrl) => {
-            primeContentCache(contentIdForPrime, task.objectKey, signedUrl);
+            primeCachedSignedUrl(videoKey, signedUrl);
+            primeContentCache(contentIdForPrime, videoKey, signedUrl);
           })
           .catch((error) =>
             fastify.log.warn(
@@ -58,17 +62,34 @@ export const taskRoutes = async (fastify: FastifyInstance) => {
           const thumbKey = keys.thumb(task.contentId);
           const contentId = task.contentId;
 
-          generateThumbnail(task.objectKey, thumbKey)
-            .then(() =>
-              db
+          generateThumbnail(videoKey, thumbKey)
+            .then(async () => {
+              await db
                 .update(schema.content)
                 .set({ thumbKey })
-                .where(eq(schema.content.contentId, contentId)),
-            )
+                .where(eq(schema.content.contentId, contentId));
+
+              const signedUrl = await storage.presignedGet(thumbKey);
+              primeCachedSignedUrl(thumbKey, signedUrl);
+            })
             .catch((error) =>
               fastify.log.warn({ error, contentId }, 'thumbnail failed'),
             );
         }
+      }
+
+      if (task.kind === 'thumbnail' || task.kind === 'avatar') {
+        const objectKey = task.objectKey;
+
+        storage
+          .presignedGet(objectKey)
+          .then((signedUrl) => primeCachedSignedUrl(objectKey, signedUrl))
+          .catch((error) =>
+            fastify.log.warn(
+              { error, objectKey, kind: task.kind },
+              'eager presign failed',
+            ),
+          );
       }
 
       return { state: 'complete' };

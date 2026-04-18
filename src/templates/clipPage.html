@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{{PAGE_TITLE}}</title>
+
+    <meta property="og:title" content="{{TITLE}}" />
+    <meta property="og:description" content="{{OG_DESCRIPTION}}" />
+    <meta property="og:type" content="video.other" />
+    <meta property="og:url" content="{{PAGE_URL}}" />
+    <meta property="og:site_name" content="Medal" />
+    {{OG_VIDEO_TAGS}} {{OG_IMAGE_TAGS}}
+    <meta name="twitter:card" content="player" />
+    <meta name="twitter:title" content="{{TITLE}}" />
+    <meta name="twitter:description" content="{{OG_DESCRIPTION}}" />
+    <meta name="twitter:player" content="{{PAGE_URL}}" />
+    <meta name="twitter:player:width" content="960" />
+    <meta name="twitter:player:height" content="540" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    />
+
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          'Inter',
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          'Helvetica Neue',
+          Arial,
+          sans-serif;
+        font-feature-settings: 'cv11', 'ss01';
+        background: #0a0a0b;
+        color: #ececec;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+      }
+
+      main {
+        width: 100%;
+        max-width: 960px;
+      }
+
+      .card {
+        background: #15161a;
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+      }
+
+      /* Player */
+      .player {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #000;
+        overflow: hidden;
+        user-select: none;
+        outline: none;
+      }
+
+      .player video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        cursor: pointer;
+        background: #000;
+      }
+
+      .big-play {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(1);
+        width: 76px;
+        height: 76px;
+        background: rgba(0, 0, 0, 0.55);
+        border: none;
+        border-radius: 50%;
+        color: #fff;
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+        opacity: 1;
+        transition:
+          opacity 0.15s ease,
+          transform 0.15s ease;
+        backdrop-filter: blur(4px);
+      }
+      .big-play:hover {
+        transform: translate(-50%, -50%) scale(1.05);
+      }
+      .big-play svg {
+        width: 32px;
+        height: 32px;
+        margin-left: 3px;
+      }
+
+      .player.playing .big-play {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .controls {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 28px 12px 10px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: linear-gradient(
+          to top,
+          rgba(0, 0, 0, 0.85),
+          rgba(0, 0, 0, 0)
+        );
+        opacity: 1;
+        transition: opacity 0.2s ease;
+      }
+      .player.playing:not(:hover):not(:focus-within) .controls {
+        opacity: 0;
+      }
+
+      .ctrl {
+        background: none;
+        border: none;
+        color: #fff;
+        cursor: pointer;
+        padding: 6px;
+        display: grid;
+        place-items: center;
+        border-radius: 4px;
+        transition: background 0.12s ease;
+      }
+      .ctrl:hover {
+        background: rgba(255, 255, 255, 0.12);
+      }
+      .ctrl svg {
+        width: 20px;
+        height: 20px;
+        display: block;
+      }
+
+      .ctrl .icon-pause,
+      .ctrl .icon-unmuted {
+        display: none;
+      }
+      .player.playing .ctrl .icon-play {
+        display: none;
+      }
+      .player.playing .ctrl .icon-pause {
+        display: block;
+      }
+      .player.muted .ctrl .icon-unmuted {
+        display: none;
+      }
+      .player:not(.muted) .ctrl .icon-muted {
+        display: none;
+      }
+      .player:not(.muted) .ctrl .icon-unmuted {
+        display: block;
+      }
+
+      .progress {
+        flex: 1;
+        height: 18px;
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        touch-action: none;
+      }
+
+      .progress-track {
+        position: relative;
+        width: 100%;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.25);
+        border-radius: 999px;
+        overflow: hidden;
+        transition: height 0.1s ease;
+      }
+      .progress:hover .progress-track {
+        height: 6px;
+      }
+
+      .progress-fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 0%;
+        background: #ef4654;
+        border-radius: 999px;
+      }
+
+      .time {
+        font-size: 12px;
+        color: #eaeaea;
+        font-variant-numeric: tabular-nums;
+        padding: 0 4px;
+        white-space: nowrap;
+      }
+
+      /* Meta */
+      .meta {
+        padding: 20px 24px 24px;
+      }
+
+      .title {
+        margin: 0 0 14px;
+        font-size: 20px;
+        line-height: 1.35;
+        font-weight: 600;
+        word-break: break-word;
+      }
+
+      .author {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #272830;
+        object-fit: cover;
+        flex-shrink: 0;
+      }
+
+      .avatar-fallback {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        color: #c7c7c7;
+      }
+
+      .user-name {
+        font-weight: 600;
+        font-size: 14px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+      }
+
+      .stats {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #8c8d94;
+        font-size: 13px;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .stats .dot {
+        width: 3px;
+        height: 3px;
+        background: #555;
+        border-radius: 50%;
+      }
+
+      @media (max-width: 520px) {
+        body {
+          padding: 12px 8px;
+        }
+        .meta {
+          padding: 16px 18px 20px;
+        }
+        .title {
+          font-size: 18px;
+        }
+        .big-play {
+          width: 60px;
+          height: 60px;
+        }
+        .big-play svg {
+          width: 26px;
+          height: 26px;
+        }
+        .time {
+          font-size: 11px;
+        }
+      }
+
+      @media (max-width: 420px) {
+        .author {
+          flex-wrap: wrap;
+        }
+        .stats {
+          margin-left: 52px;
+          width: 100%;
+          font-size: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <article class="card">
+        <div class="player" tabindex="0" data-player>
+          <video
+            playsinline
+            preload="metadata"
+            {{POSTER_ATTR}}
+            src="{{VIDEO_SRC}}"
+            data-video
+          ></video>
+
+          <button
+            type="button"
+            class="big-play"
+            aria-label="Play"
+            data-big-play
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </button>
+
+          <div class="controls">
+            <button
+              type="button"
+              class="ctrl"
+              aria-label="Play / Pause"
+              data-play
+            >
+              <svg
+                class="icon-play"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M8 5v14l11-7z" />
+              </svg>
+              <svg
+                class="icon-pause"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
+              </svg>
+            </button>
+
+            <div
+              class="progress"
+              data-progress
+              role="slider"
+              aria-label="Seek"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+              tabindex="0"
+            >
+              <div class="progress-track">
+                <div class="progress-fill" data-progress-fill></div>
+              </div>
+            </div>
+
+            <span class="time" data-time>0:00 / 0:00</span>
+
+            <button
+              type="button"
+              class="ctrl"
+              aria-label="Mute / Unmute"
+              data-mute
+            >
+              <svg
+                class="icon-unmuted"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  d="M3 10v4h4l5 5V5L7 10H3zm13.5 2a4.5 4.5 0 00-2.5-4.03v8.06A4.5 4.5 0 0016.5 12zM14 3.23v2.06A7 7 0 0119 12a7 7 0 01-5 6.71v2.06A9 9 0 0021 12 9 9 0 0014 3.23z"
+                />
+              </svg>
+              <svg
+                class="icon-muted"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  d="M16.5 12A4.5 4.5 0 0014 7.97v2.21L16.45 12.63c.03-.21.05-.42.05-.63zM19 12c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.96 8.96 0 0021 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.17v2.06a8.99 8.99 0 003.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"
+                />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              class="ctrl"
+              aria-label="Fullscreen"
+              data-fullscreen
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="meta">
+          <h1 class="title">{{TITLE}}</h1>
+
+          <div class="author">
+            {{AVATAR_HTML}}
+            <span class="user-name">{{USER_NAME}}</span>
+            <div class="stats">
+              <span>{{VIEWS_PRETTY}}</span>
+              <span class="dot" aria-hidden="true"></span>
+              <time datetime="{{DATE_ISO}}" title="{{DATE_ABSOLUTE}}"
+                >{{DATE_RELATIVE}}</time
+              >
+            </div>
+          </div>
+        </div>
+      </article>
+    </main>
+
+    <script>
+      (() => {
+        const root = document.querySelector('[data-player]');
+        if (!root) return;
+
+        const video = root.querySelector('[data-video]');
+        const bigPlay = root.querySelector('[data-big-play]');
+        const playBtn = root.querySelector('[data-play]');
+        const progress = root.querySelector('[data-progress]');
+        const progressFill = root.querySelector('[data-progress-fill]');
+        const timeEl = root.querySelector('[data-time]');
+        const muteBtn = root.querySelector('[data-mute]');
+        const fsBtn = root.querySelector('[data-fullscreen]');
+
+        const pad = (n) => n.toString().padStart(2, '0');
+        const fmt = (s) => {
+          if (!Number.isFinite(s) || s < 0) s = 0;
+          const total = Math.floor(s);
+          const h = Math.floor(total / 3600);
+          const m = Math.floor((total % 3600) / 60);
+          const sec = total % 60;
+          return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+        };
+
+        const toggle = () => {
+          video.paused ? video.play() : video.pause();
+        };
+
+        video.addEventListener('click', toggle);
+        bigPlay.addEventListener('click', toggle);
+        playBtn.addEventListener('click', toggle);
+
+        video.addEventListener('play', () => root.classList.add('playing'));
+        video.addEventListener('pause', () => root.classList.remove('playing'));
+
+        const updateTime = () => {
+          const d = Number.isFinite(video.duration) ? video.duration : 0;
+          const pct = d ? (video.currentTime / d) * 100 : 0;
+          progressFill.style.width = `${pct}%`;
+          progress.setAttribute('aria-valuenow', Math.round(pct).toString());
+          timeEl.textContent = `${fmt(video.currentTime)} / ${fmt(d)}`;
+        };
+        video.addEventListener('timeupdate', updateTime);
+        video.addEventListener('loadedmetadata', updateTime);
+        video.addEventListener('durationchange', updateTime);
+
+        const seekFromEvent = (event) => {
+          const rect = progress.getBoundingClientRect();
+          if (rect.width <= 0) return;
+          const x = Math.max(
+            0,
+            Math.min(rect.width, event.clientX - rect.left),
+          );
+          const duration = Number.isFinite(video.duration) ? video.duration : 0;
+          if (duration > 0) video.currentTime = (x / rect.width) * duration;
+        };
+
+        let seeking = false;
+        progress.addEventListener('pointerdown', (event) => {
+          seeking = true;
+          try {
+            progress.setPointerCapture(event.pointerId);
+          } catch {}
+          seekFromEvent(event);
+        });
+        progress.addEventListener('pointermove', (event) => {
+          if (seeking) seekFromEvent(event);
+        });
+        const endSeek = (event) => {
+          if (!seeking) return;
+          seeking = false;
+          try {
+            progress.releasePointerCapture(event.pointerId);
+          } catch {}
+        };
+        progress.addEventListener('pointerup', endSeek);
+        progress.addEventListener('pointercancel', endSeek);
+
+        const syncMuted = () =>
+          root.classList.toggle('muted', video.muted || video.volume === 0);
+        muteBtn.addEventListener('click', () => {
+          video.muted = !video.muted;
+          syncMuted();
+        });
+        video.addEventListener('volumechange', syncMuted);
+        syncMuted();
+
+        fsBtn.addEventListener('click', () => {
+          if (document.fullscreenElement) {
+            document.exitFullscreen();
+          } else {
+            root.requestFullscreen?.();
+          }
+        });
+
+        root.addEventListener('keydown', (event) => {
+          if (event.target.closest('button')) return;
+
+          switch (event.key) {
+            case ' ':
+            case 'k':
+              event.preventDefault();
+              toggle();
+              break;
+            case 'ArrowLeft':
+              event.preventDefault();
+              video.currentTime = Math.max(0, video.currentTime - 5);
+              break;
+            case 'ArrowRight':
+              event.preventDefault();
+              video.currentTime = Math.min(
+                video.duration || 0,
+                video.currentTime + 5,
+              );
+              break;
+            case 'f':
+              event.preventDefault();
+              fsBtn.click();
+              break;
+            case 'm':
+              event.preventDefault();
+              muteBtn.click();
+              break;
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

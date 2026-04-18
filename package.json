@@ -8,7 +8,7 @@
     "scripts": {
         "dev": "tsx watch --env-file=.env src/index.ts",
         "start": "node --env-file=.env dist/index.js",
-        "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+        "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && node scripts/copyTemplates.mjs",
         "typecheck": "tsc --noEmit",
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
@@ -31,6 +31,7 @@
         "execa": "^9.5.1",
         "fastify": "^5.1.0",
         "fastify-plugin": "^5.1.0",
+        "isbot": "^5.1.39",
         "nanoid": "^5.1.9",
         "postgres": "^3.4.5",
         "zod": "^4.3.6"

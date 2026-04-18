@@ -33,6 +33,8 @@ export const env = createEnv({
     PUBLIC_APP_URL: z.string().url().default('http://localhost:8080'),
 
     ROOT_REDIRECT_URL: z.string().url().optional(),
+
+    RAILWAY_PUBLIC_DOMAIN: z.string().optional(),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

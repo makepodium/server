@@ -1,5 +1,5 @@
 import type { User } from '@/db/schema.js';
-import { storage } from '@/storage/index.js';
+import { getCachedSignedUrl } from '@/lib/presignCache.js';
 
 const pickExt = (key: string | null) =>
   key ? (key.split('.').pop() ?? 'jpg') : null;
@@ -163,7 +163,7 @@ export const serializeUser = async (
   options: SerializeUserOptions = {},
 ) => {
   const avatarUrl = user.avatarKey
-    ? await storage.presignedGet(user.avatarKey)
+    ? await getCachedSignedUrl(user.avatarKey)
     : null;
 
   const isSelf = options.viewer?.userId === user.userId;

@@ -1,0 +1,1 @@
+ALTER TABLE "content" ADD COLUMN "views" bigint DEFAULT 0 NOT NULL;

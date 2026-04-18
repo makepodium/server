@@ -55,6 +55,7 @@ export const content = pgTable(
     videoKey: text('video_key'),
     thumbKey: text('thumb_key'),
     hasCustomThumb: text('has_custom_thumb').notNull().default('false'),
+    views: bigint('views', { mode: 'number' }).notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
