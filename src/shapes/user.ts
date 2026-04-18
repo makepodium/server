@@ -54,13 +54,11 @@ const buildIncludeFields = (
 
     switch (key) {
       case 'user_stats':
-        out.userStats = {
-          followers: 0,
-          following: 0,
-          clips: 0,
-          clipViews: 0,
-          totalClipsLength: 0,
-        };
+        out.followers = 0;
+        out.following = 0;
+        out.clips = 0;
+        out.clipViews = 0;
+        out.totalClipsLength = 0;
         break;
 
       case 'user_status':
