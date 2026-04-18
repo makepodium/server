@@ -1,1 +1,1 @@
-ALTER TABLE "content" ADD COLUMN "deleted_at" timestamp with time zone;
+ALTER TABLE "content" ADD COLUMN IF NOT EXISTS "deleted_at" timestamp with time zone;

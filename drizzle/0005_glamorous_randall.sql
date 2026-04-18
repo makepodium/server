@@ -1,1 +1,1 @@
-ALTER TABLE "content" ADD COLUMN "views" bigint DEFAULT 0 NOT NULL;
+ALTER TABLE "content" ADD COLUMN IF NOT EXISTS "views" bigint DEFAULT 0 NOT NULL;
