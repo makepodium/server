@@ -10,6 +10,7 @@ import { invalidateContentCache } from '@/lib/contentCache.js';
 import { notFound, unauthorized } from '@/lib/errors.js';
 import { newContentId } from '@/lib/ids.js';
 import { slugify } from '@/lib/slugify.js';
+import { reconcileContentUpload } from '@/lib/uploadReconcile.js';
 import { parse } from '@/lib/validate.js';
 import type { CategoryStub } from '@/shapes/content.js';
 import { serializeContent } from '@/shapes/content.js';
@@ -110,6 +111,7 @@ const loadUserForContent = async (userId: number) => {
   return {
     userId: user.userId,
     userName: user.userName,
+    displayName: user.displayName,
     avatarKey: user.avatarKey,
   };
 };
@@ -347,11 +349,12 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
       ids.map(async (id) => {
         const row = byId.get(id);
         if (row) {
-          const [user, category] = await Promise.all([
+          const [reconciled, user, category] = await Promise.all([
+            reconcileContentUpload(row),
             getUser(row.userId),
             getCategory(row.categoryId),
           ]);
-          return serializeContent(row, user, category);
+          return serializeContent(reconciled, user, category);
         }
 
         return { contentId: id, deletedAt: tombstone };
@@ -407,11 +410,12 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
 
     return Promise.all(
       rows.map(async (row) => {
-        const [user, category] = await Promise.all([
+        const [reconciled, user, category] = await Promise.all([
+          reconcileContentUpload(row),
           getUser(row.userId),
           getCategory(row.categoryId),
         ]);
-        return serializeContent(row, user, category);
+        return serializeContent(reconciled, user, category);
       }),
     );
   });
@@ -429,12 +433,13 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
       });
       if (!row || row.deletedAt) throw notFound();
 
-      const [user, category] = await Promise.all([
+      const [reconciled, user, category] = await Promise.all([
+        reconcileContentUpload(row),
         loadUserForContent(row.userId),
         loadCategory(row.categoryId),
       ]);
 
-      return serializeContent(row, user, category);
+      return serializeContent(reconciled, user, category);
     },
   );
 

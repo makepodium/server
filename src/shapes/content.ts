@@ -10,7 +10,7 @@ export type CategoryStub = Pick<
 
 export const serializeContent = async (
   row: Content,
-  user: Pick<User, 'userId' | 'userName' | 'avatarKey'>,
+  user: Pick<User, 'userId' | 'userName' | 'displayName' | 'avatarKey'>,
   category?: CategoryStub | null,
 ) => {
   const [videoUrl, thumbUrl, avatarUrl] = await Promise.all([
@@ -20,6 +20,8 @@ export const serializeContent = async (
   ]);
 
   const video = videoUrl ?? '';
+  const thumb = thumbUrl ?? '';
+  const avatar = avatarUrl ?? '';
 
   const categoryId = row.categoryId;
   const resolvedCategory =
@@ -36,6 +38,19 @@ export const serializeContent = async (
       }
     : null;
 
+  const poster = {
+    userId: user.userId,
+    userName: user.userName,
+    displayName: user.displayName,
+    thumbnail: avatar,
+    followers: 0,
+    following: 0,
+    isFollowing: false,
+    isFollowedBy: false,
+    isBlocked: false,
+    isVerified: false,
+  };
+
   return {
     contentId: row.contentId,
     contentTitle: row.contentTitle,
@@ -45,15 +60,27 @@ export const serializeContent = async (
 
     contentUrl: video,
     contentUrl144p: video,
+    contentUrl240p: video,
     contentUrl360p: video,
+    contentUrl480p: video,
     contentUrl720p: video,
     contentUrl1080p: video,
-    contentThumbnail: thumbUrl ?? '',
+
+    thumbnailUrl: thumb,
+    thumbnail144p: thumb,
+    thumbnail240p: thumb,
+    thumbnail360p: thumb,
+    thumbnail480p: thumb,
+    thumbnail720p: thumb,
+    thumbnail1080p: thumb,
+    contentThumbnail: thumb,
+
     contentShareUrl: `${env.PUBLIC_APP_URL.replace(/\/$/, '')}/games/${slug}/clips/${row.contentId}`,
 
+    poster,
     userId: user.userId,
     userName: user.userName,
-    userAvatar: avatarUrl ?? '',
+    userAvatar: avatar,
 
     likes: 0,
     comments: 0,

@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { requireAuth } from '@/auth/plugin.js';
 import { db, schema } from '@/db/index.js';
 import { unauthorized } from '@/lib/errors.js';
+import { reconcileContentUpload } from '@/lib/uploadReconcile.js';
 import { parse } from '@/lib/validate.js';
 import { type CategoryStub, serializeContent } from '@/shapes/content.js';
 
@@ -53,6 +54,7 @@ export const searchRoutes = async (fastify: FastifyInstance) => {
     const user = {
       userId: userRow.userId,
       userName: userRow.userName,
+      displayName: userRow.displayName,
       avatarKey: userRow.avatarKey,
     };
 
@@ -77,13 +79,16 @@ export const searchRoutes = async (fastify: FastifyInstance) => {
     }
 
     const items = await Promise.all(
-      rows.map((row) =>
-        serializeContent(
-          row,
+      rows.map(async (row) => {
+        const reconciled = await reconcileContentUpload(row);
+        return serializeContent(
+          reconciled,
           user,
-          row.categoryId ? (categoryMap.get(row.categoryId) ?? null) : null,
-        ),
-      ),
+          reconciled.categoryId
+            ? (categoryMap.get(reconciled.categoryId) ?? null)
+            : null,
+        );
+      }),
     );
 
     return { items };
