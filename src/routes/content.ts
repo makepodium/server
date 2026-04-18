@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, lt, SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, lt, SQL } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -10,7 +10,6 @@ import { notFound, unauthorized } from '@/lib/errors.js';
 import { newContentId } from '@/lib/ids.js';
 import { parse } from '@/lib/validate.js';
 import { serializeContent } from '@/shapes/content.js';
-import { storage } from '@/storage/index.js';
 
 const categoryIdSchema = z
   .union([z.string().max(64), z.number(), z.null()])
@@ -178,7 +177,10 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
       const offset = query.offset ?? 0;
       const privacyFilter = query.privacy;
 
-      const filters: SQL[] = [eq(schema.content.userId, targetId)];
+      const filters: SQL[] = [
+        eq(schema.content.userId, targetId),
+        isNull(schema.content.deletedAt),
+      ];
       if (privacyFilter.length > 0)
         filters.push(inArray(schema.content.privacy, privacyFilter));
 
@@ -224,11 +226,15 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
     };
 
     const byId = new Map(rows.map((row) => [row.contentId, row]));
+    const tombstone = new Date().toISOString();
+
     const items = await Promise.all(
-      ids
-        .map((id) => byId.get(id))
-        .filter((row): row is NonNullable<typeof row> => row !== undefined)
-        .map(async (row) => serializeContent(row, await getUser(row.userId))),
+      ids.map(async (id) => {
+        const row = byId.get(id);
+        if (row) return serializeContent(row, await getUser(row.userId));
+
+        return { contentId: id, deletedAt: tombstone };
+      }),
     );
 
     return { items };
@@ -248,7 +254,10 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
     const targetUserIds =
       query.userIds.length > 0 ? query.userIds : [request.user.userId];
 
-    const filters: SQL[] = [inArray(schema.content.userId, targetUserIds)];
+    const filters: SQL[] = [
+      inArray(schema.content.userId, targetUserIds),
+      isNull(schema.content.deletedAt),
+    ];
     if (privacyFilter.length > 0)
       filters.push(inArray(schema.content.privacy, privacyFilter));
 
@@ -302,7 +311,7 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
       const row = await db.query.content.findFirst({
         where: eq(schema.content.contentId, contentId),
       });
-      if (!row) throw notFound();
+      if (!row || row.deletedAt) throw notFound();
 
       const user = await loadUserForContent(row.userId);
 
@@ -329,10 +338,15 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
               await db
                 .update(schema.content)
                 .set(patch)
-                .where(eq(schema.content.contentId, contentId))
+                .where(
+                  and(
+                    eq(schema.content.contentId, contentId),
+                    isNull(schema.content.deletedAt),
+                  ),
+                )
                 .returning()
             )[0];
-      if (!row) throw notFound();
+      if (!row || row.deletedAt) throw notFound();
 
       if (Object.keys(patch).length > 0) invalidateContentCache(contentId);
 
@@ -351,15 +365,11 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
       const row = await db.query.content.findFirst({
         where: eq(schema.content.contentId, contentId),
       });
-      if (!row) throw notFound();
-
-      await Promise.allSettled([
-        row.videoKey ? storage.delete(row.videoKey) : Promise.resolve(),
-        row.thumbKey ? storage.delete(row.thumbKey) : Promise.resolve(),
-      ]);
+      if (!row || row.deletedAt) throw notFound();
 
       await db
-        .delete(schema.content)
+        .update(schema.content)
+        .set({ deletedAt: new Date() })
         .where(eq(schema.content.contentId, contentId));
 
       invalidateContentCache(contentId);

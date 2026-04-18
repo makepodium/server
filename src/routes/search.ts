@@ -1,4 +1,4 @@
-import { and, eq, ilike } from 'drizzle-orm';
+import { and, eq, ilike, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -39,6 +39,7 @@ export const searchRoutes = async (fastify: FastifyInstance) => {
       where: and(
         eq(schema.content.userId, request.user.userId),
         ilike(schema.content.contentTitle, `%${escapeLike(searchTerm)}%`),
+        isNull(schema.content.deletedAt),
       ),
       limit,
       offset,

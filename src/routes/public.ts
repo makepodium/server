@@ -41,9 +41,11 @@ const resolveShareRedirect = async (
       where: eq(schema.content.contentId, contentId),
     });
 
-    if (!row || !row.videoKey) {
+    if (!row || !row.videoKey || row.deletedAt) {
       if (!row) {
         request.log.warn({ contentId }, 'share link: content row not found');
+      } else if (row.deletedAt) {
+        request.log.info({ contentId }, 'share link: content archived');
       } else {
         request.log.warn(
           { contentId, privacy: row.privacy },
@@ -83,7 +85,7 @@ export const publicRoutes = async (fastify: FastifyInstance) => {
         where: eq(schema.content.contentId, contentId),
       });
 
-      if (!row || !row.videoKey) throw notFound();
+      if (!row || !row.videoKey || row.deletedAt) throw notFound();
 
       const [user, thumbnailUrl] = await Promise.all([
         db.query.users.findFirst({

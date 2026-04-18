@@ -40,6 +40,7 @@ export const serializeContent = async (
     privacy: row.privacy,
     createdAt: row.createdAt.toISOString(),
     contentUploadedAt: row.uploadedAt?.toISOString() ?? null,
+    deletedAt: row.deletedAt?.toISOString() ?? null,
 
     tags: [] as string[],
     userTags: [] as unknown[],

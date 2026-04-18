@@ -60,6 +60,7 @@ export const content = pgTable(
       .notNull()
       .defaultNow(),
     uploadedAt: timestamp('uploaded_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => ({
     userCreatedIdx: index('content_user_created_idx').on(
