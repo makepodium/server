@@ -343,23 +343,22 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
     const { getUser, getCategory } = createContentLoaders();
 
     const byId = new Map(rows.map((row) => [row.contentId, row]));
+    const tombstone = new Date().toISOString();
 
-    const items = (
-      await Promise.all(
-        ids.map(async (id) => {
-          const row = byId.get(id);
-          if (!row) return null;
+    const items = await Promise.all(
+      ids.map(async (id) => {
+        const row = byId.get(id);
+        if (!row) return { contentId: id, deletedAt: tombstone };
 
-          const [reconciled, user, category] = await Promise.all([
-            reconcileContentUpload(row),
-            getUser(row.userId),
-            getCategory(row.categoryId),
-          ]);
+        const [reconciled, user, category] = await Promise.all([
+          reconcileContentUpload(row),
+          getUser(row.userId),
+          getCategory(row.categoryId),
+        ]);
 
-          return serializeContent(reconciled, user, category);
-        }),
-      )
-    ).filter((item): item is NonNullable<typeof item> => item !== null);
+        return serializeContent(reconciled, user, category);
+      }),
+    );
 
     return { items };
   });
