@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt, SQL } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, lt } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -129,6 +130,34 @@ const loadCategory = async (
     slug: row.slug,
     icon: row.icon,
   };
+};
+
+const createContentLoaders = () => {
+  const userCache = new Map<
+    number,
+    Awaited<ReturnType<typeof loadUserForContent>>
+  >();
+  const categoryCache = new Map<string, CategoryStub | null>();
+
+  const getUser = async (userId: number) => {
+    const cached = userCache.get(userId);
+    if (cached) return cached;
+
+    const loaded = await loadUserForContent(userId);
+    userCache.set(userId, loaded);
+    return loaded;
+  };
+
+  const getCategory = async (categoryId: string | null) => {
+    if (!categoryId) return null;
+    if (categoryCache.has(categoryId)) return categoryCache.get(categoryId)!;
+
+    const loaded = await loadCategory(categoryId);
+    categoryCache.set(categoryId, loaded);
+    return loaded;
+  };
+
+  return { getUser, getCategory };
 };
 
 const ensureUniqueSlug = async (
@@ -309,28 +338,7 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
       where: inArray(schema.content.contentId, ids),
     });
 
-    const userCache = new Map<
-      number,
-      Awaited<ReturnType<typeof loadUserForContent>>
-    >();
-    const getUser = async (userId: number) => {
-      const cached = userCache.get(userId);
-      if (cached) return cached;
-
-      const loaded = await loadUserForContent(userId);
-      userCache.set(userId, loaded);
-      return loaded;
-    };
-
-    const categoryCache = new Map<string, CategoryStub | null>();
-    const getCategory = async (categoryId: string | null) => {
-      if (!categoryId) return null;
-      if (categoryCache.has(categoryId)) return categoryCache.get(categoryId)!;
-
-      const loaded = await loadCategory(categoryId);
-      categoryCache.set(categoryId, loaded);
-      return loaded;
-    };
+    const { getUser, getCategory } = createContentLoaders();
 
     const byId = new Map(rows.map((row) => [row.contentId, row]));
     const tombstone = new Date().toISOString();
@@ -395,28 +403,7 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
       offset,
     });
 
-    const userCache = new Map<
-      number,
-      Awaited<ReturnType<typeof loadUserForContent>>
-    >();
-    const getUser = async (userId: number) => {
-      const cached = userCache.get(userId);
-      if (cached) return cached;
-
-      const loaded = await loadUserForContent(userId);
-      userCache.set(userId, loaded);
-      return loaded;
-    };
-
-    const categoryCache = new Map<string, CategoryStub | null>();
-    const getCategory = async (categoryId: string | null) => {
-      if (!categoryId) return null;
-      if (categoryCache.has(categoryId)) return categoryCache.get(categoryId)!;
-
-      const loaded = await loadCategory(categoryId);
-      categoryCache.set(categoryId, loaded);
-      return loaded;
-    };
+    const { getUser, getCategory } = createContentLoaders();
 
     return Promise.all(
       rows.map(async (row) => {
