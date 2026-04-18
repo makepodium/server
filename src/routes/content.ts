@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, lt, SQL } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -79,6 +79,8 @@ const listQuerySchema = z.object({
   limit: paginationLimit,
   offset: paginationOffset,
   privacy: csvInts,
+  userIds: csvInts,
+  from: z.coerce.number().int().optional(),
   sortBy: z.string().max(50).optional(),
   sortDirection: z.enum(['ASC', 'DESC']).optional(),
   newPagination: z.enum(['true', 'false']).optional(),
@@ -230,9 +232,21 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
 
     if (paginated) return { items: [], meta: null };
 
-    const filters: SQL[] = [eq(schema.content.userId, request.user.userId)];
+    const targetUserIds =
+      query.userIds.length > 0 ? query.userIds : [request.user.userId];
+
+    const filters: SQL[] = [inArray(schema.content.userId, targetUserIds)];
     if (privacyFilter.length > 0)
       filters.push(inArray(schema.content.privacy, privacyFilter));
+
+    if (query.from !== undefined) {
+      const cursor = new Date(query.from);
+      filters.push(
+        query.sortDirection === 'ASC'
+          ? gt(schema.content.createdAt, cursor)
+          : lt(schema.content.createdAt, cursor),
+      );
+    }
 
     const order =
       query.sortDirection === 'ASC'
@@ -246,9 +260,22 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
       offset,
     });
 
-    const user = await loadUserForContent(request.user.userId);
+    const userCache = new Map<
+      number,
+      Awaited<ReturnType<typeof loadUserForContent>>
+    >();
+    const getUser = async (userId: number) => {
+      const cached = userCache.get(userId);
+      if (cached) return cached;
 
-    return Promise.all(rows.map((row) => serializeContent(row, user)));
+      const loaded = await loadUserForContent(userId);
+      userCache.set(userId, loaded);
+      return loaded;
+    };
+
+    return Promise.all(
+      rows.map(async (row) => serializeContent(row, await getUser(row.userId))),
+    );
   });
 
   fastify.get(

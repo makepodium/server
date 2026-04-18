@@ -24,6 +24,7 @@ export const users = pgTable(
     birthYear: integer('birth_year'),
     passwordHash: text('password_hash').notNull(),
     authKey: text('auth_key').notNull(),
+    languageLocale: text('language_locale').notNull().default('en'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
