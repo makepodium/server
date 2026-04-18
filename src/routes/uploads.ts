@@ -12,8 +12,6 @@ import { unauthorized } from '@/lib/errors.js';
 import { parse } from '@/lib/validate.js';
 import { keys, storage } from '@/storage/index.js';
 
-// 50 GiB is well past any real clip or thumbnail, but it stops a bad actor
-// from asking us to pre-sign something absurd.
 const uploadBodySchema = z
   .object({
     resumable: z.boolean().optional(),
@@ -38,15 +36,15 @@ const contentIdQuerySchema = z.object({
     .regex(/^[A-Za-z0-9_-]+$/, 'invalid contentId'),
 });
 
-const extensionFromContentType = (contentType: string): string => {
-  const byType: Record<string, string> = {
-    'image/jpeg': 'jpg',
-    'image/jpg': 'jpg',
-    'image/png': 'png',
-    'image/webp': 'webp',
-  };
-  return byType[contentType.toLowerCase()] ?? 'bin';
+const EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
 };
+
+const extensionFromContentType = (contentType: string): string =>
+  EXTENSION_BY_CONTENT_TYPE[contentType.toLowerCase()] ?? 'bin';
 
 export const uploadRoutes = async (fastify: FastifyInstance) => {
   fastify.post(

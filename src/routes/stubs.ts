@@ -186,25 +186,14 @@ const guessBody = (path: string): { body: StubBody; status: number } => {
 export const stubRoutes = async (fastify: FastifyInstance) => {
   for (const def of stubs) {
     const handler = respond(def);
-    const opts = def.public ? {} : { preHandler: requireAuth };
+    const options = def.public ? {} : { preHandler: requireAuth };
 
-    switch (def.method) {
-      case 'GET':
-        fastify.get(def.path, opts, handler);
-        break;
-      case 'POST':
-        fastify.post(def.path, opts, handler);
-        break;
-      case 'PUT':
-        fastify.put(def.path, opts, handler);
-        break;
-      case 'PATCH':
-        fastify.patch(def.path, opts, handler);
-        break;
-      case 'DELETE':
-        fastify.delete(def.path, opts, handler);
-        break;
-    }
+    fastify.route({
+      method: def.method,
+      url: def.path,
+      handler,
+      ...options,
+    });
   }
 };
 

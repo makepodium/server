@@ -66,11 +66,12 @@ const build = async () => {
   });
   await app.register(authPlugin);
 
-  app.setErrorHandler((err, request, reply) => {
-    if (err instanceof MedalError) {
-      return reply.status(err.statusCode).send(err.toBody());
+  app.setErrorHandler((error, request, reply) => {
+    if (error instanceof MedalError) {
+      return reply.status(error.statusCode).send(error.toBody());
     }
-    request.log.error({ err }, 'unhandled error');
+
+    request.log.error({ err: error }, 'unhandled error');
     return reply.status(500).send({ errorMessage: 'Internal Server Error' });
   });
 
@@ -101,8 +102,8 @@ const main = async () => {
   try {
     await app.listen({ host: env.HOST, port: env.PORT });
     startCategorySync(app.log);
-  } catch (err) {
-    app.log.error(err);
+  } catch (error) {
+    app.log.error(error);
     process.exit(1);
   }
 };

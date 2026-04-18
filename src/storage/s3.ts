@@ -35,11 +35,16 @@ const publicClient =
 
 const bucket = env.S3_BUCKET;
 
-export type Op = 'get' | 'put';
+type Operation = 'get' | 'put';
 
-const presign = (op: Op, key: string, ttl: number, contentType?: string) => {
-  const cmd =
-    op === 'get'
+const presign = (
+  operation: Operation,
+  key: string,
+  ttl: number,
+  contentType?: string,
+) => {
+  const command =
+    operation === 'get'
       ? new GetObjectCommand({ Bucket: bucket, Key: key })
       : new PutObjectCommand({
           Bucket: bucket,
@@ -47,7 +52,7 @@ const presign = (op: Op, key: string, ttl: number, contentType?: string) => {
           ContentType: contentType,
         });
 
-  return getSignedUrl(publicClient, cmd, { expiresIn: ttl });
+  return getSignedUrl(publicClient, command, { expiresIn: ttl });
 };
 
 export const storage = {

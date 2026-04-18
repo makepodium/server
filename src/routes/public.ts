@@ -115,8 +115,8 @@ export const publicRoutes = async (fastify: FastifyInstance) => {
         db.update(schema.content)
           .set({ views: sql`${schema.content.views} + 1` })
           .where(eq(schema.content.contentId, contentId))
-          .catch((err) =>
-            request.log.warn({ err, contentId }, 'view bump failed'),
+          .catch((error) =>
+            request.log.warn({ err: error, contentId }, 'view bump failed'),
           );
       }
 

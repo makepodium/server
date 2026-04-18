@@ -132,7 +132,7 @@ export const renderClipPage = (data: ClipPageData): string => {
     (data.displayName ?? data.userName).trim() || data.userName;
   const absoluteDate = formatDate(data.createdAtIso);
   const relativeDate = formatRelativeTime(data.createdAtIso);
-  const pageTitle = truncate(`${title} — ${authorName}`, 120);
+  const pageTitle = truncate(`${title} - Podium`, 120);
   const ogDescription = truncate(`${authorName} on Medal`, 180);
 
   return fillTemplate({

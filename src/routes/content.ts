@@ -452,31 +452,34 @@ export const contentRoutes = async (fastify: FastifyInstance) => {
       const { contentId } = request.params as { contentId: string };
       const body = parse(contentBodySchema, request.body ?? {});
       const patch = buildContentPatch(body);
+      const hasPatch = Object.keys(patch).length > 0;
 
       if (body.categoryId !== undefined && body.categoryId !== null) {
         await upsertCategory(body.categoryId, body);
       }
 
-      const row =
-        Object.keys(patch).length === 0
-          ? await db.query.content.findFirst({
-              where: eq(schema.content.contentId, contentId),
-            })
-          : (
-              await db
-                .update(schema.content)
-                .set(patch)
-                .where(
-                  and(
-                    eq(schema.content.contentId, contentId),
-                    isNull(schema.content.deletedAt),
-                  ),
-                )
-                .returning()
-            )[0];
+      let row;
+      if (hasPatch) {
+        const [updated] = await db
+          .update(schema.content)
+          .set(patch)
+          .where(
+            and(
+              eq(schema.content.contentId, contentId),
+              isNull(schema.content.deletedAt),
+            ),
+          )
+          .returning();
+        row = updated;
+      } else {
+        row = await db.query.content.findFirst({
+          where: eq(schema.content.contentId, contentId),
+        });
+      }
+
       if (!row || row.deletedAt) throw notFound();
 
-      if (Object.keys(patch).length > 0) invalidateContentCache(contentId);
+      if (hasPatch) invalidateContentCache(contentId);
 
       const [user, category] = await Promise.all([
         loadUserForContent(row.userId),

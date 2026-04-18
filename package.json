@@ -1,8 +1,9 @@
 {
-    "name": "medal-server",
+    "name": "podium-server",
     "version": "0.0.1",
     "private": true,
     "description": "Self-hosted Medal-compatible API",
+    "license": "MIT",
     "packageManager": "pnpm@9.12.3",
     "type": "module",
     "scripts": {
