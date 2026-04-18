@@ -29,6 +29,20 @@ const userNameSchema = z
 
 const emailSchema = z.string().trim().toLowerCase().email().max(255);
 
+const currentYear = new Date().getUTCFullYear();
+
+const birthYearSchema = z
+  .union([
+    z.number().int(),
+    z
+      .string()
+      .regex(/^\d{4}$/)
+      .transform(Number),
+  ])
+  .refine((year) => year >= 1900 && year <= currentYear, {
+    message: 'birthYear out of range',
+  });
+
 const loginSchema = z
   .object({
     email: z.string().trim().toLowerCase().max(255).optional(),
@@ -47,6 +61,7 @@ const registerSchema = z
     email: emailSchema,
     password: passwordSchema,
     displayName: z.string().trim().min(1).max(50).optional(),
+    birthYear: birthYearSchema.optional(),
   })
   .refine((body) => Boolean(body.userName ?? body.username), {
     message: 'userName required',
@@ -119,6 +134,7 @@ export const authRoutes = async (fastify: FastifyInstance) => {
           displayName: body.displayName ?? userName,
           passwordHash,
           authKey,
+          birthYear: body.birthYear,
         })
         .returning();
 
