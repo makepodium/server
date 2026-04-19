@@ -32,7 +32,7 @@ const build = async () => {
   const app = Fastify({
     logger: { level: env.NODE_ENV === 'production' ? 'info' : 'debug' },
     trustProxy: true,
-    ignoreTrailingSlash: true,
+    routerOptions: { ignoreTrailingSlash: true },
   });
 
   app.removeContentTypeParser('application/json');
